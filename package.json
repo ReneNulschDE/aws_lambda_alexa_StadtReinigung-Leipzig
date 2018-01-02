@@ -1,0 +1,11 @@
+{
+    "name": "alexa-skill-kit-waste-collection.info",
+    "version": "0.0.1",
+    "private": true,
+    "dependencies": {
+      "alexa-sdk": "^1.0.10",
+      "moment": "^2.20.1",
+      "lodash": "^4.17.4"
+    }
+  }
+  
