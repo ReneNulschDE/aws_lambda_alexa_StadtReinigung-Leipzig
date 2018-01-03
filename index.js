@@ -1,5 +1,5 @@
-var http = require('https');
-var moment = require('moment');
+const http = require('http');
+var moment = require('moment-timezone');
 var _ = require('lodash');
 
 moment.locale('de');
@@ -44,9 +44,9 @@ exports.handler = function (event, context) {
 
 function api(endpoint, cb) {
 
-    return https.get({
+    return http.get({
         host: 'www.stadtreinigung-leipzig.de',
-        path: '/intern/aek-streetsearch.html?aekApp=1'
+        path: '/intern/aek-streetsearch.html?aekApp=1&lid=x56518'
     }, function (res) {
         res.setEncoding('utf8');
         var body = '';
@@ -58,9 +58,10 @@ function api(endpoint, cb) {
             try {
                 console.log("data received for " + endpoint);
                 console.log("statusCode: ", res.statusCode);
+                console.log("body", body);
                 var parsed = null;
                 if (res.statusCode == "200") {
-                    var parsed = fastXmlParser.parse(body);
+                    var parsed = JSON.parse(body);
                 }
                 cb(parsed);
             } catch (err) {
@@ -110,41 +111,43 @@ function onIntent(intentRequest, session, callback) {
     switch (intentName) {
         case "getWasteCollectionInfoByDate":
 
-            var requestedDate = moment().format('YYYY-MM-DD');
+            var requestedDate = moment.tz("Europe/Berlin").startOf('day');
             if (intent.slots.requestedDate && intent.slots.requestedDate.value) {
-                requestedDate = moment(intent.slots.requestedDate.value);
+                requestedDate = moment.tz(intent.slots.requestedDate.value, "Europe/Berlin");
             }
 
-            api(requestedDate, function (result) {
+            api(requestedDate, function (data) {
 
-                var cardTitle = 'Müllplan für ' + moment(requestedDate).format('DD.MM.YYYY');
+                var cardTitle = 'Müllplan für ' + requestedDate.format('DD.MM.YYYY');
                 var shouldEndSession = true;
-                var speechOutput = 'Am <say-as interpret-as="date">????' + moment(requestedDate).format('MMDD') + '</say-as> wird ';
-                var textOutput = 'Am ' + moment(requestedDate).format('dddd, [den] Do MMMM YYYY ') + ' wird: ';
+                var speechOutput = 'Am <say-as interpret-as="date">????' + requestedDate.format('MMDD') + '</say-as> wird ';
+                var textOutput = 'Am ' + requestedDate.format('dddd, [den] Do MMMM YYYY ') + ' wird ';
 
 
-                if (result == null) {
-                    speechOutput += "Für dieses Datum konnte ich keine Informationen abrufen. Wahrscheinlich hat der Server ein Problem.";
+                if (data == null) {
+                    speechOutput += "möglicherweise irgendeine Tonne abgeholt. Wahrscheinlich hat der Server ein Problem.";
                     textOutput += "Für dieses Datum konnte ich keine Informationen abrufen. ";
                     this.cb({}, buildSpeechletResponse(cardTitle, speechOutput, speechOutput, shouldEndSession, textOutput));
                 } else {
 
                     var found = false;
-
-                    var result = JSON.parse(data);
         
-                    for (var prop in result) {
-                        if (prop !== "special" && _.indexOf(result[prop], 1514934000) > -1) {
-                            message += "Es wird die " + getColor(prop) + " Tonne abgeholt. ";
+                    console.log("requested date:", requestedDate.format('YYYYMMDD') + ' - ' + requestedDate.unix());
+
+                    for (var prop in data) {
+                        if (prop !== "special" && _.indexOf(data[prop], requestedDate.startOf('day').unix()) > -1) {
+                            speechOutput += "die " + getColor(prop) + " Tonne abgeholt. ";
+                            textOutput += "die " + getColor(prop) + " Tonne abgeholt. ";
                             found = true;
                         }
                     };
         
                     if (!found) {
-                        message += "Es wird keine Tonne abgeholt. ";
+                        speechOutput += " keine Tonne abgeholt. ";
+                        textOutput += " keine Tonne abgeholt. ";
                     }
         
-                    this.cb({}, buildSpeechletResponse(cardTitle, speechOutput, speechOutput, shouldEndSession, textOutput));
+                    this.cb({}, buildSpeechletResponse(cardTitle, speechOutput, textOutput, shouldEndSession, textOutput));
                 }
 
             }.bind(this));
@@ -229,4 +232,23 @@ function buildResponse(sessionAttributes, speechletResponse) {
         sessionAttributes: sessionAttributes,
         response: speechletResponse
     };
+}
+
+function getColor(c) {
+    switch (c) {
+        case "r":
+            return "schwarze";
+            break;
+        case "b":
+            return "grüne";
+            break;
+        case "p":
+            return "blaue";
+            break;
+        case "g":
+            return "gelbe";
+            break;
+        default:
+            return c;
+    }
 }
